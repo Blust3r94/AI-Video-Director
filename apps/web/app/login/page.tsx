@@ -23,7 +23,7 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Impossibile accedere.");
-      router.push("/projects/new");
+      router.push("/projects");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossibile accedere.");

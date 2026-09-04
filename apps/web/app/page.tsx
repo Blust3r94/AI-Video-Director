@@ -14,7 +14,7 @@ export default function Home() {
       <p className="eyebrow">THE PRODUCTION WORKSPACE</p>
       <h1>Dall’idea a un piano video che il tuo team può davvero produrre.</h1>
       <p className="lead">Progetta il film. Mantieni coerenza fra personaggi, scene e shot. Collega i generatori solo quando il piano è pronto.</p>
-      <div className="actions"><a className="primary" href="/projects/new">Nuovo progetto</a><a href="#flow">Vedi il flusso</a></div>
+      <div className="actions"><a className="primary" href="/projects/new">Nuovo progetto</a><a href="/projects">I tuoi progetti</a><a href="#flow">Vedi il flusso</a></div>
     </section>
     <section id="flow" className="stages">{stages.map(([number, title, description]) => <article key={number}><span>{number}</span><h2>{title}</h2><p>{description}</p></article>)}</section>
     <section className="notice"><strong>Fondazione pronta.</strong> Il prossimo passo è costruire il primo flusso verticale: progetto, brief e piano dimostrativo.</section>
