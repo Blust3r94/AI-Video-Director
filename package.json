@@ -16,7 +16,8 @@
     "test": "npm test --workspaces --if-present",
     "db:check": "npm run schema:check --workspace=@avid/database",
     "db:migrate": "npm run migrate --workspace=@avid/database",
-    "worker": "npm run start --workspace=@avid/worker"
+    "worker": "npm run start --workspace=@avid/worker",
+    "worker:once": "npm run run-once --workspace=@avid/worker"
   },
   "engines": {
     "node": ">=22"
