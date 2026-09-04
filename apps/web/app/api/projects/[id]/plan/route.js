@@ -173,6 +173,11 @@ export async function POST(request, { params }) {
     plan.revision = revisionResult.rows[0].next_revision;
 
     await client.query(
+      "UPDATE production_plans SET status = 'superseded' WHERE project_id = $1 AND status != 'superseded'",
+      [projectId]
+    );
+
+    await client.query(
       `INSERT INTO production_plans (id, project_id, revision, status, overview, creative_direction, screenplay, cinematic_bible, continuity_map, project_state, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
