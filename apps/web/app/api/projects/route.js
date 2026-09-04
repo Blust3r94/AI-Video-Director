@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "../../../lib/db";
+import { DEV_USER_ID, DEV_WORKSPACE_ID } from "../../../lib/dev-identity";
 
-const DEV_USER_ID = "00000000-0000-4000-8000-000000000001";
-const DEV_WORKSPACE_ID = "00000000-0000-4000-8000-000000000002";
 const text = (value) => typeof value === "string" ? value.trim() : "";
 
 export async function POST(request) {

@@ -8,6 +8,9 @@ The first MVP deliberately focuses on **planning and project management**. Video
 
 ```powershell
 npm install
+docker-compose up -d
+Copy-Item apps/web/.env.example apps/web/.env.local
+npm run db:migrate
 npm run dev
 ```
 
@@ -26,7 +29,7 @@ Open `http://localhost:3000`.
 ```text
 apps/web                 Next.js product interface and API boundary
 packages/domain          Provider-independent business model and contracts
-packages/database        Future Prisma schema/migrations home
+packages/database        SQL migrations, applied with npm run db:migrate
 packages/ai              DirectorPlanner implementations (mock now, LLM-backed later)
 packages/worker          Future asynchronous jobs home
 docs                     Product decisions, roadmap and domain model

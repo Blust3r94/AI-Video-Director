@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@avid/ai": "*",
     "@avid/domain": "*",
     "next": "16.0.0",
     "react": "19.2.0",

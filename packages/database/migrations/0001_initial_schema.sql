@@ -4,7 +4,7 @@
 CREATE TYPE membership_role AS ENUM ('owner', 'editor', 'viewer');
 CREATE TYPE project_status AS ENUM ('draft', 'planning', 'in_review', 'approved', 'production', 'archived');
 CREATE TYPE plan_status AS ENUM ('draft', 'in_review', 'approved', 'superseded');
-CREATE TYPE shot_status AS ENUM ('draft', 'approved', 'queued', 'processing', 'complete', 'failed');
+CREATE TYPE clip_status AS ENUM ('planned', 'generating', 'generated', 'under_review', 'approved', 'rejected', 'revision_required');
 CREATE TYPE job_status AS ENUM ('queued', 'running', 'succeeded', 'failed', 'cancelled');
 
 CREATE TABLE users (
@@ -56,13 +56,19 @@ CREATE TABLE project_briefs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- overview/creative_direction/cinematic_bible/continuity_map/project_state are document-shaped
+-- planning output (see @avid/domain ProductionPlan) with no independent relational identity.
 CREATE TABLE production_plans (
   id UUID PRIMARY KEY,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   revision INTEGER NOT NULL CHECK (revision > 0),
   status plan_status NOT NULL DEFAULT 'draft',
-  concept TEXT NOT NULL,
-  continuity_notes TEXT,
+  overview JSONB NOT NULL,
+  creative_direction JSONB NOT NULL,
+  screenplay JSONB NOT NULL,
+  cinematic_bible JSONB NOT NULL,
+  continuity_map JSONB NOT NULL DEFAULT '{"transitions": []}'::jsonb,
+  project_state JSONB NOT NULL,
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   approved_at TIMESTAMPTZ,
@@ -74,8 +80,17 @@ CREATE TABLE characters (
   id UUID PRIMARY KEY,
   plan_id UUID NOT NULL REFERENCES production_plans(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  description TEXT NOT NULL,
-  visual_notes TEXT,
+  role TEXT NOT NULL,
+  apparent_age TEXT NOT NULL,
+  build TEXT NOT NULL,
+  face TEXT NOT NULL,
+  hair TEXT NOT NULL,
+  outfit TEXT NOT NULL,
+  accessories JSONB NOT NULL DEFAULT '[]'::jsonb,
+  physical_condition TEXT NOT NULL,
+  emotional_state TEXT NOT NULL,
+  arc TEXT NOT NULL,
+  identity_lock_prompt TEXT,
   reference_asset_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -84,45 +99,70 @@ CREATE TABLE locations (
   id UUID PRIMARY KEY,
   plan_id UUID NOT NULL REFERENCES production_plans(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  description TEXT NOT NULL,
-  visual_notes TEXT,
+  architecture TEXT NOT NULL,
+  materials TEXT NOT NULL,
+  climate TEXT NOT NULL,
+  time_of_day TEXT NOT NULL,
+  lighting TEXT NOT NULL,
+  damage_state TEXT NOT NULL,
+  atmosphere TEXT NOT NULL,
+  identity_lock_prompt TEXT,
   reference_asset_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE scenes (
+CREATE TABLE sequences (
   id UUID PRIMARY KEY,
   plan_id UUID NOT NULL REFERENCES production_plans(id) ON DELETE CASCADE,
   sequence_number INTEGER NOT NULL CHECK (sequence_number > 0),
   title TEXT NOT NULL,
   summary TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (plan_id, sequence_number)
+);
+
+CREATE TABLE scenes (
+  id UUID PRIMARY KEY,
+  sequence_id UUID NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
+  scene_number INTEGER NOT NULL CHECK (scene_number > 0),
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
   duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
   status plan_status NOT NULL DEFAULT 'draft',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (plan_id, sequence_number)
+  UNIQUE (sequence_id, scene_number)
 );
 
-CREATE TABLE shots (
+-- character_ids is a JSONB array of character UUIDs: a clip's cast is metadata, not an
+-- independently queried relation, so a join table is unneeded for the MVP.
+CREATE TABLE clips (
   id UUID PRIMARY KEY,
   scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
-  sequence_number INTEGER NOT NULL CHECK (sequence_number > 0),
-  purpose TEXT NOT NULL,
-  prompt TEXT,
-  negative_prompt TEXT,
+  clip_number INTEGER NOT NULL CHECK (clip_number > 0),
+  narrative_purpose TEXT NOT NULL,
+  action TEXT NOT NULL,
+  character_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  camera_shot TEXT NOT NULL,
+  camera_movement TEXT NOT NULL,
+  lighting TEXT NOT NULL,
+  starting_state JSONB NOT NULL,
+  ending_state JSONB NOT NULL,
   duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
-  status shot_status NOT NULL DEFAULT 'draft',
-  continuity_input JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status clip_status NOT NULL DEFAULT 'planned',
+  prompt JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (scene_id, sequence_number)
+  UNIQUE (scene_id, clip_number)
 );
 
 CREATE TABLE assets (
   id UUID PRIMARY KEY,
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  shot_id UUID REFERENCES shots(id) ON DELETE SET NULL,
+  clip_id UUID REFERENCES clips(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK (kind IN ('reference_image', 'video_clip', 'audio', 'frame', 'document')),
   storage_key TEXT NOT NULL,
   mime_type TEXT NOT NULL,
@@ -135,7 +175,7 @@ CREATE TABLE jobs (
   id UUID PRIMARY KEY,
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  shot_id UUID REFERENCES shots(id) ON DELETE SET NULL,
+  clip_id UUID REFERENCES clips(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK (kind IN ('planning', 'reference_generation', 'media_generation', 'assembly')),
   status job_status NOT NULL DEFAULT 'queued',
   idempotency_key TEXT NOT NULL UNIQUE,

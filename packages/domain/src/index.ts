@@ -143,6 +143,7 @@ export interface Scene {
   title: string;
   summary: string;
   locationId: string;
+  status: PlanStatus;
   clips: Clip[];
 }
 

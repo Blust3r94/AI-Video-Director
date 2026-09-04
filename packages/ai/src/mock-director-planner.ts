@@ -224,7 +224,7 @@ export class MockDirectorPlanner implements DirectorPlanner {
         order: actIndex + 1,
         title: act.title,
         summary: act.summary,
-        scenes: [{ id: randomUUID(), order: 1, title: act.title, summary: act.summary, locationId: location.id, clips }],
+        scenes: [{ id: randomUUID(), order: 1, title: act.title, summary: act.summary, locationId: location.id, status: "draft", clips }],
       };
     });
 
