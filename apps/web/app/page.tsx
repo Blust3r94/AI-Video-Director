@@ -1,3 +1,5 @@
+import { AuthStatus } from "../lib/auth-status";
+
 const stages = [
   ["01", "Creative brief", "Obiettivo, formato, pubblico e vincoli."],
   ["02", "Director plan", "Bibbia, scene, shot e mappa di continuità."],
@@ -7,7 +9,7 @@ const stages = [
 
 export default function Home() {
   return <main>
-    <nav><span className="brand">AI VIDEO DIRECTOR</span><span className="pill">MVP · planning first</span></nav>
+    <nav><span className="brand">AI VIDEO DIRECTOR</span><span className="nav-right"><span className="pill">MVP · planning first</span><AuthStatus /></span></nav>
     <section className="hero">
       <p className="eyebrow">THE PRODUCTION WORKSPACE</p>
       <h1>Dall’idea a un piano video che il tuo team può davvero produrre.</h1>

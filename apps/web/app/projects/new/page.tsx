@@ -3,19 +3,23 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRequireSession } from "../../../lib/use-session";
+import { AuthStatus } from "../../../lib/auth-status";
 
 type BriefState = { title: string; premise: string; audience: string; duration: string; format: string; visualDirection: string };
 const initialBrief: BriefState = { title: "", premise: "", audience: "", duration: "60", format: "16:9", visualDirection: "" };
 
 export default function NewProjectPage() {
+  const user = useRequireSession();
   const [brief, setBrief] = useState<BriefState>(initialBrief);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const router = useRouter();
   function update(field: keyof BriefState, value: string) { setBrief((current) => ({ ...current, [field]: value })); setError(""); }
   async function saveDraft(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(""); try { const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(brief) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Impossibile salvare il progetto."); window.localStorage.setItem("avid-demo-brief", JSON.stringify(data.project)); router.push("/projects/plan"); } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Impossibile salvare il progetto."); } finally { setSaving(false); } }
+  if (!user) return null;
   return <main className="project-page">
-    <nav><Link className="brand" href="/">AI VIDEO DIRECTOR</Link><span className="pill">STEP 01 / 04</span></nav>
+    <nav><Link className="brand" href="/">AI VIDEO DIRECTOR</Link><span className="nav-right"><span className="pill">STEP 01 / 04</span><AuthStatus /></span></nav>
     <div className="project-heading"><p className="eyebrow">NUOVO PROGETTO</p><h1>Raccontami cosa vuoi creare.</h1><p>Il Director userà questo brief per preparare concept, scene, shot e continuità. Puoi rifinirlo dopo.</p></div>
     <form className="brief-form" onSubmit={saveDraft}>
       <label>Titolo del progetto<input required value={brief.title} onChange={(e) => update("title", e.target.value)} placeholder="Es. Duello sopra Neo Milano" /></label>

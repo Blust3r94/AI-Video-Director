@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../lib/db";
-import { DEV_USER_ID } from "../../../../../lib/dev-identity";
+import { requireSession } from "../../../../../lib/session";
 
 export async function GET(request, { params }) {
+  const { session, response: unauthorized } = await requireSession(request);
+  if (!session) return unauthorized;
+
   const { id: projectId } = await params;
   const client = await db.connect();
   try {
@@ -13,9 +16,10 @@ export async function GET(request, { params }) {
        FROM jobs
        JOIN clips ON clips.id = jobs.clip_id
        JOIN scenes ON scenes.id = clips.scene_id
-       WHERE jobs.project_id = $1
+       JOIN projects ON projects.id = jobs.project_id
+       WHERE jobs.project_id = $1 AND projects.workspace_id = $2
        ORDER BY jobs.created_at ASC`,
-      [projectId]
+      [projectId, session.workspaceId]
     );
     const jobs = result.rows.map((row) => ({
       id: row.id,
@@ -37,12 +41,14 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
+  const { session, response: unauthorized } = await requireSession(request);
+  if (!session) return unauthorized;
+
   const { id: projectId } = await params;
   const client = await db.connect();
   try {
-    const projectResult = await client.query("SELECT workspace_id FROM projects WHERE id = $1", [projectId]);
+    const projectResult = await client.query("SELECT id FROM projects WHERE id = $1 AND workspace_id = $2", [projectId, session.workspaceId]);
     if (!projectResult.rows.length) return NextResponse.json({ error: "Progetto non trovato." }, { status: 404 });
-    const workspaceId = projectResult.rows[0].workspace_id;
 
     const planResult = await client.query(
       "SELECT id FROM production_plans WHERE project_id = $1 ORDER BY revision DESC LIMIT 1",
@@ -68,14 +74,14 @@ export async function POST(request, { params }) {
         `INSERT INTO jobs (id, workspace_id, project_id, clip_id, kind, status, idempotency_key)
          VALUES ($1, $2, $3, $4, 'media_generation', 'queued', $5)
          ON CONFLICT (idempotency_key) DO NOTHING`,
-        [randomUUID(), workspaceId, projectId, clip.id, `media_generation:${clip.id}`]
+        [randomUUID(), session.workspaceId, projectId, clip.id, `media_generation:${clip.id}`]
       );
     }
 
     await client.query(
       `INSERT INTO activity_events (id, workspace_id, project_id, actor_id, event_type, payload)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), workspaceId, projectId, DEV_USER_ID, "production.queued", JSON.stringify({ clipCount: clipsResult.rows.length })]
+      [randomUUID(), session.workspaceId, projectId, session.userId, "production.queued", JSON.stringify({ clipCount: clipsResult.rows.length })]
     );
 
     await client.query("UPDATE projects SET status = 'production', updated_at = now() WHERE id = $1", [projectId]);

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { MockDirectorPlanner } from "@avid/ai";
 import { db } from "../../../../../lib/db";
-import { DEV_USER_ID } from "../../../../../lib/dev-identity";
+import { requireSession } from "../../../../../lib/session";
 
 const planner = new MockDirectorPlanner();
 
@@ -80,12 +80,18 @@ function groupBy(rows, key) {
 }
 
 export async function GET(request, { params }) {
+  const { session, response: unauthorized } = await requireSession(request);
+  if (!session) return unauthorized;
+
   const { id: projectId } = await params;
   const client = await db.connect();
   try {
     const planResult = await client.query(
-      "SELECT * FROM production_plans WHERE project_id = $1 ORDER BY revision DESC LIMIT 1",
-      [projectId]
+      `SELECT production_plans.* FROM production_plans
+       JOIN projects ON projects.id = production_plans.project_id
+       WHERE production_plans.project_id = $1 AND projects.workspace_id = $2
+       ORDER BY revision DESC LIMIT 1`,
+      [projectId, session.workspaceId]
     );
     if (!planResult.rows.length) return NextResponse.json({ plan: null });
     const planRow = planResult.rows[0];
@@ -150,12 +156,19 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
+  const { session, response: unauthorized } = await requireSession(request);
+  if (!session) return unauthorized;
+
   const { id: projectId } = await params;
   const client = await db.connect();
   try {
     const briefResult = await client.query(
-      "SELECT premise, target_audience, runtime_seconds, aspect_ratio, visual_direction, constraints FROM project_briefs WHERE project_id = $1",
-      [projectId]
+      `SELECT project_briefs.premise, project_briefs.target_audience, project_briefs.runtime_seconds,
+              project_briefs.aspect_ratio, project_briefs.visual_direction, project_briefs.constraints
+       FROM project_briefs
+       JOIN projects ON projects.id = project_briefs.project_id
+       WHERE project_briefs.project_id = $1 AND projects.workspace_id = $2`,
+      [projectId, session.workspaceId]
     );
     if (!briefResult.rows.length) return NextResponse.json({ error: "Nessun brief trovato per questo progetto." }, { status: 404 });
 
@@ -165,7 +178,7 @@ export async function POST(request, { params }) {
 
     // Lock the project row so two concurrent plan requests for the same project (e.g. a
     // double-fired client effect, or two tabs) serialize instead of racing on the revision number.
-    await client.query("SELECT id FROM projects WHERE id = $1 FOR UPDATE", [projectId]);
+    await client.query("SELECT id FROM projects WHERE id = $1 AND workspace_id = $2 FOR UPDATE", [projectId, session.workspaceId]);
     const revisionResult = await client.query(
       "SELECT COALESCE(MAX(revision), 0) + 1 AS next_revision FROM production_plans WHERE project_id = $1",
       [projectId]
@@ -191,7 +204,7 @@ export async function POST(request, { params }) {
         JSON.stringify(plan.videoBible.cinematic),
         JSON.stringify(plan.continuityMap),
         JSON.stringify(plan.projectState),
-        DEV_USER_ID,
+        session.userId,
       ]
     );
 
@@ -281,7 +294,7 @@ export async function POST(request, { params }) {
     await client.query(
       `INSERT INTO activity_events (id, workspace_id, project_id, actor_id, event_type, payload)
        SELECT $1, workspace_id, $2, $3, $4, $5 FROM projects WHERE id = $2`,
-      [randomUUID(), projectId, DEV_USER_ID, "plan.created", JSON.stringify({ planId: plan.id, revision: plan.revision })]
+      [randomUUID(), projectId, session.userId, "plan.created", JSON.stringify({ planId: plan.id, revision: plan.revision })]
     );
 
     await client.query("COMMIT");
