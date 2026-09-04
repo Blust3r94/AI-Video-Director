@@ -5,6 +5,37 @@ import { requireSession } from "../../../lib/session";
 
 const text = (value) => typeof value === "string" ? value.trim() : "";
 
+export async function GET(request) {
+  const { session, response } = await requireSession(request);
+  if (!session) return response;
+
+  const result = await db.query(
+    `SELECT projects.id, projects.title, projects.status, projects.created_at, projects.updated_at,
+            project_briefs.premise, project_briefs.target_audience, project_briefs.runtime_seconds,
+            project_briefs.aspect_ratio, project_briefs.visual_direction
+     FROM projects
+     LEFT JOIN project_briefs ON project_briefs.project_id = projects.id
+     WHERE projects.workspace_id = $1
+     ORDER BY projects.updated_at DESC`,
+    [session.workspaceId]
+  );
+
+  const projects = result.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    premise: row.premise,
+    audience: row.target_audience,
+    duration: row.runtime_seconds != null ? String(row.runtime_seconds) : null,
+    format: row.aspect_ratio,
+    visualDirection: row.visual_direction ?? "",
+  }));
+
+  return NextResponse.json({ projects });
+}
+
 export async function POST(request) {
   const { session, response } = await requireSession(request);
   if (!session) return response;
