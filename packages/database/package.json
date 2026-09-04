@@ -1,0 +1,9 @@
+{
+  "name": "@avid/database",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "schema:check": "node scripts/check-schema.mjs",
+    "migrate": "node scripts/migrate.mjs"
+  }
+}

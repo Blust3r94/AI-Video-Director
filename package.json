@@ -1,0 +1,26 @@
+{
+  "name": "ai-video-director",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Video Director — SaaS for planning and producing AI-assisted video projects.",
+  "packageManager": "npm@11.17.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@avid/web",
+    "build": "npm run build --workspace=@avid/web",
+    "lint": "npm run lint --workspace=@avid/web",
+    "typecheck": "npm run typecheck --workspace=@avid/web",
+    "test": "npm run test --workspace=@avid/domain",
+    "db:check": "npm run schema:check --workspace=@avid/database",
+    "db:migrate": "npm run migrate --workspace=@avid/database"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
+}
