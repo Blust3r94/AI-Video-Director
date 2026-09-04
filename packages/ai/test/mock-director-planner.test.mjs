@@ -48,6 +48,19 @@ test("continuity map chains every consecutive clip", async () => {
   }
 });
 
+test("every clip gets a video generation prompt referencing the cast", async () => {
+  const plan = await new MockDirectorPlanner().createPlan({ projectId: "project-1", brief: baseBrief });
+  const clips = flattenClips(plan);
+  const characterNames = plan.videoBible.characters.map((character) => character.name);
+  for (const clip of clips) {
+    assert.ok(clip.prompt, `clip ${clip.id} has no prompt`);
+    assert.equal(clip.prompt.characterIdentityLock.length, characterNames.length);
+    for (const name of characterNames) assert.ok(clip.prompt.subject.includes(name));
+    assert.ok(clip.prompt.action.length > 0);
+    assert.ok(clip.prompt.camera.includes(clip.cameraShot));
+  }
+});
+
 test("handles very short runtimes without breaking invariants", async () => {
   const plan = await new MockDirectorPlanner().createPlan({
     projectId: "project-2",

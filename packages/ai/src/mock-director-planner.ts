@@ -14,6 +14,7 @@ import type {
   ProjectState,
   Screenplay,
   Sequence,
+  VideoGenerationPrompt,
 } from "@avid/domain";
 
 const CLIP_TARGET_SECONDS = 8;
@@ -156,6 +157,38 @@ function buildScreenplay(acts: typeof ACT_TEMPLATES): Screenplay {
   };
 }
 
+function buildIdentityLock(character: CharacterBible): string {
+  return `${character.name}: corporatura ${character.build}, viso ${character.face}, capelli ${character.hair}, indossa ${character.outfit}`;
+}
+
+function buildVideoGenerationPrompt(params: {
+  clipCharacters: CharacterBible[];
+  location: LocationBible;
+  cinematic: CinematicBible;
+  action: string;
+  cameraShot: string;
+  cameraMovement: string;
+  lighting: string;
+  startingState: ContinuityState;
+  endingState: ContinuityState;
+}): VideoGenerationPrompt {
+  const { clipCharacters, location, cinematic, action, cameraShot, cameraMovement, lighting, startingState, endingState } = params;
+  return {
+    subject: clipCharacters.map((character) => character.name).join(", ") || "nessun personaggio",
+    characterIdentityLock: clipCharacters.map(buildIdentityLock),
+    action,
+    environment: `${location.name}: ${location.architecture}, stato: ${location.damageState}`,
+    composition: cameraShot,
+    camera: `${cameraShot}, movimento: ${cameraMovement}`,
+    lighting,
+    atmosphere: location.atmosphere,
+    cinematicStyle: `${cinematic.visualStyle}, color grading: ${cinematic.colorGrading}`,
+    visualQuality: `${cinematic.depthOfField}, alta definizione, dettaglio cinematografico`,
+    continuity: `continua da: ${startingState.characterPosition}, illuminazione ${startingState.lighting}`,
+    endingFrame: `termina con: ${endingState.characterPosition}, ambiente ${endingState.environmentState}`,
+  };
+}
+
 function advanceState(previous: ContinuityState, clipNumber: number): ContinuityState {
   return {
     ...previous,
@@ -198,20 +231,25 @@ export class MockDirectorPlanner implements DirectorPlanner {
         const order = clipIndex + 1;
         const startingState = previousEndingState;
         const endingState = advanceState(startingState, order);
+        const action = `${act.action} (clip ${order} di ${totalClips})`;
+        const cameraShot = SHOT_TYPES[clipIndex % SHOT_TYPES.length];
+        const cameraMovement = CAMERA_MOVEMENTS[clipIndex % CAMERA_MOVEMENTS.length];
+        const lighting = cinematic.lightingPhilosophy;
         const clip: Clip = {
           id: randomUUID(),
           order,
           durationSeconds: clipDurations[clipIndex],
           narrativePurpose: act.purpose,
-          action: `${act.action} (clip ${order} di ${totalClips})`,
+          action,
           characterIds: characters.map((character) => character.id),
           locationId: location.id,
-          cameraShot: SHOT_TYPES[clipIndex % SHOT_TYPES.length],
-          cameraMovement: CAMERA_MOVEMENTS[clipIndex % CAMERA_MOVEMENTS.length],
-          lighting: cinematic.lightingPhilosophy,
+          cameraShot,
+          cameraMovement,
+          lighting,
           startingState,
           endingState,
           status: "planned",
+          prompt: buildVideoGenerationPrompt({ clipCharacters: characters, location, cinematic, action, cameraShot, cameraMovement, lighting, startingState, endingState }),
         };
         if (previousClipId) transitions.push({ fromClipId: previousClipId, toClipId: clip.id, carriedState: startingState, status: "consistent" });
         previousEndingState = endingState;

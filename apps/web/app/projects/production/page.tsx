@@ -62,6 +62,16 @@ export default function ProductionPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Impossibile caricare la produzione."));
   }, [brief]);
 
+  useEffect(() => {
+    if (!brief || jobs.length === 0) return;
+    const stillProcessing = jobs.some((job) => job.status === "queued" || job.status === "running");
+    if (!stillProcessing) return;
+    const interval = setInterval(() => {
+      fetchJobs(brief.id).then(setJobs).catch(() => {});
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [brief, jobs]);
+
   async function handleLaunch() {
     if (!brief || launching) return;
     setLaunching(true);
@@ -97,5 +107,5 @@ export default function ProductionPage() {
     ? jobs.map((job) => ({ id: job.id, label: job.sceneTitle, title: job.narrativePurpose, description: `${job.cameraShot} · ${job.cameraMovement}`, status: STATUS_LABELS[job.status] ?? job.status }))
     : approvedClips.map((clip) => ({ id: clip.id, label: clip.sceneTitle, title: clip.narrativePurpose, description: `${clip.cameraShot} · ${clip.cameraMovement}`, status: "Da avviare" }));
 
-  return <main className="project-page"><nav><Link className="brand" href="/">AI VIDEO DIRECTOR</Link><span className="pill">STEP 04 / 04</span></nav><section className="production-heading"><p className="eyebrow">PRODUCTION QUEUE</p><h1>{launched ? "Produzione in coda." : "Pronto a produrre."}</h1><p><strong>{brief.title}</strong> · {plan.overview.runtimeSeconds} secondi · {plan.overview.aspectRatio} · {rows.length} clip {launched ? "in coda" : "pronte"}</p></section><section className="queue"><div className="queue-labels"><span>SCENA</span><span>CLIP</span><span>STATO</span></div>{rows.map((row) => <article key={row.id}><span>{row.label}</span><div><h2>{row.title}</h2><p>{row.description}</p></div><em><i />{row.status}</em></article>)}</section><section className="production-note"><strong>Nessun generatore è ancora collegato.</strong><p>{launched ? "I job sono in coda, reali, tracciati nel database — nessun worker li processa ancora: è il prossimo modulo." : "Avviare la produzione crea un job reale per ogni clip approvata, pronto per un worker futuro."}</p>{error && <p>{error}</p>}</section><div className="plan-actions"><Link href="/projects/review">Torna alla review</Link><button disabled={launched || launching || approvedClips.length === 0} onClick={handleLaunch}>{launching ? "Avvio…" : launched ? "Produzione avviata" : "Avvia produzione"}</button></div></main>;
+  return <main className="project-page"><nav><Link className="brand" href="/">AI VIDEO DIRECTOR</Link><span className="pill">STEP 04 / 04</span></nav><section className="production-heading"><p className="eyebrow">PRODUCTION QUEUE</p><h1>{launched ? "Produzione in coda." : "Pronto a produrre."}</h1><p><strong>{brief.title}</strong> · {plan.overview.runtimeSeconds} secondi · {plan.overview.aspectRatio} · {rows.length} clip {launched ? "in coda" : "pronte"}</p></section><section className="queue"><div className="queue-labels"><span>SCENA</span><span>CLIP</span><span>STATO</span></div>{rows.map((row) => <article key={row.id}><span>{row.label}</span><div><h2>{row.title}</h2><p>{row.description}</p></div><em><i />{row.status}</em></article>)}</section><section className="production-note"><strong>Nessun generatore video reale è ancora collegato.</strong><p>{launched ? "I job sono reali e tracciati nel database. Se il worker (npm run worker) è in esecuzione li processa automaticamente — questa pagina si aggiorna da sola finché restano job in coda o in corso." : "Avviare la produzione crea un job reale per ogni clip approvata."}</p>{error && <p>{error}</p>}</section><div className="plan-actions"><Link href="/projects/review">Torna alla review</Link><button disabled={launched || launching || approvedClips.length === 0} onClick={handleLaunch}>{launching ? "Avvio…" : launched ? "Produzione avviata" : "Avvia produzione"}</button></div></main>;
 }
