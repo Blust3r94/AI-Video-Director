@@ -1,12 +1,15 @@
 import pg from "pg";
-import { MockMediaGenerationProvider } from "@avid/ai";
+import { FalMediaGenerationProvider, MockMediaGenerationProvider } from "@avid/ai";
 
-const SIMULATED_PROCESSING_MS = 4000;
+const POLL_TIMEOUT_MS = 30 * 60 * 1000;
 
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL ?? "postgresql://avid:avid@localhost:5432/avid" });
-const provider = new MockMediaGenerationProvider();
 
-export async function claimNextJob() {
+const usingFal = Boolean(process.env.FAL_KEY);
+const provider = usingFal ? new FalMediaGenerationProvider() : new MockMediaGenerationProvider();
+const PROVIDER_NAME = usingFal ? "fal.ai" : "mock-provider";
+
+async function claimNextQueuedJob() {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -30,48 +33,99 @@ export async function claimNextJob() {
   }
 }
 
-async function processMediaGenerationJob(job) {
-  const clipResult = await pool.query("SELECT prompt FROM clips WHERE id = $1", [job.clip_id]);
-  const prompt = clipResult.rows[0]?.prompt;
-  if (!prompt) throw new Error(`clip ${job.clip_id} has no generation prompt`);
-
-  const { providerJobId } = await provider.requestGeneration({ clipId: job.clip_id, prompt });
-  await pool.query("UPDATE jobs SET provider_name = $1, provider_job_id = $2 WHERE id = $3", ["mock-provider", providerJobId, job.id]);
-
-  await new Promise((resolve) => setTimeout(resolve, SIMULATED_PROCESSING_MS));
-
-  await pool.query("UPDATE jobs SET status = 'succeeded', completed_at = now(), output = $1 WHERE id = $2", [
-    JSON.stringify({ simulated: true, providerJobId }),
-    job.id,
-  ]);
-  await pool.query("UPDATE clips SET status = 'generated', updated_at = now() WHERE id = $1", [job.clip_id]);
+async function failJob(job, message) {
+  await pool.query("UPDATE jobs SET status = 'failed', completed_at = now(), error_message = $1 WHERE id = $2", [message, job.id]);
+  if (job.clip_id) await pool.query("UPDATE clips SET status = 'revision_required', updated_at = now() WHERE id = $1", [job.clip_id]);
 }
 
-export async function processJob(job) {
-  console.log(`[worker] processing ${job.kind} job ${job.id}`);
+// Hands a newly claimed job off to the provider (requestGeneration only returns a provider job
+// id -- real generation keeps running after this call returns) and stores that id for later polls.
+async function submitJob(job) {
   try {
-    if (job.kind === "media_generation") {
-      await processMediaGenerationJob(job);
-    } else {
-      throw new Error(`unsupported job kind: ${job.kind}`);
-    }
-    console.log(`[worker] job ${job.id} succeeded`);
+    if (job.kind !== "media_generation") throw new Error(`unsupported job kind: ${job.kind}`);
+
+    const clipResult = await pool.query(
+      `SELECT clips.prompt, clips.duration_seconds, production_plans.overview ->> 'aspectRatio' AS aspect_ratio
+       FROM clips
+       JOIN scenes ON scenes.id = clips.scene_id
+       JOIN sequences ON sequences.id = scenes.sequence_id
+       JOIN production_plans ON production_plans.id = sequences.plan_id
+       WHERE clips.id = $1`,
+      [job.clip_id]
+    );
+    const row = clipResult.rows[0];
+    if (!row?.prompt) throw new Error(`clip ${job.clip_id} has no generation prompt`);
+
+    const { providerJobId } = await provider.requestGeneration({
+      clipId: job.clip_id,
+      prompt: row.prompt,
+      durationSeconds: row.duration_seconds,
+      aspectRatio: row.aspect_ratio ?? "16:9",
+    });
+    await pool.query("UPDATE jobs SET provider_name = $1, provider_job_id = $2 WHERE id = $3", [PROVIDER_NAME, providerJobId, job.id]);
+    console.log(`[worker] submitted job ${job.id} -> ${PROVIDER_NAME} ${providerJobId}`);
   } catch (error) {
-    console.error(`[worker] job ${job.id} failed:`, error.message);
-    await pool.query("UPDATE jobs SET status = 'failed', completed_at = now(), error_message = $1 WHERE id = $2", [error.message, job.id]);
-    if (job.clip_id) await pool.query("UPDATE clips SET status = 'revision_required', updated_at = now() WHERE id = $1", [job.clip_id]);
+    console.error(`[worker] job ${job.id} submit failed:`, error.message);
+    await failJob(job, error.message);
   }
 }
 
-// Claims and processes queued jobs one at a time until the queue is empty or maxJobs is
-// reached, then returns -- the shape a scheduled/cron trigger needs (run, exit, run again later).
-export async function processBatch(maxJobs) {
-  let processed = 0;
-  while (processed < maxJobs) {
-    const job = await claimNextJob();
+async function submitQueuedJobs(maxJobs) {
+  let count = 0;
+  while (count < maxJobs) {
+    const job = await claimNextQueuedJob();
     if (!job) break;
-    await processJob(job);
-    processed += 1;
+    await submitJob(job);
+    count += 1;
   }
-  return processed;
+  return count;
+}
+
+async function pollJob(job) {
+  try {
+    const check = await provider.checkGeneration({ providerJobId: job.provider_job_id });
+
+    if (check.status === "processing") {
+      if (Date.now() - new Date(job.started_at).getTime() > POLL_TIMEOUT_MS) {
+        await failJob(job, "Timed out waiting for the provider to finish.");
+        console.error(`[worker] job ${job.id} timed out`);
+      }
+      return;
+    }
+
+    if (check.status === "succeeded") {
+      await pool.query("UPDATE jobs SET status = 'succeeded', completed_at = now(), output = $1 WHERE id = $2", [
+        JSON.stringify({ outputUrl: check.outputUrl }),
+        job.id,
+      ]);
+      if (job.clip_id) await pool.query("UPDATE clips SET status = 'generated', updated_at = now() WHERE id = $1", [job.clip_id]);
+      console.log(`[worker] job ${job.id} succeeded: ${check.outputUrl}`);
+      return;
+    }
+
+    await failJob(job, check.errorMessage);
+    console.error(`[worker] job ${job.id} failed:`, check.errorMessage);
+  } catch (error) {
+    // A poll request itself failing (network blip, transient 5xx) doesn't mean the generation
+    // failed -- leave the job running and let the timeout above catch anything truly stuck.
+    console.error(`[worker] job ${job.id} poll error (will retry):`, error.message);
+  }
+}
+
+async function pollRunningJobs() {
+  const result = await pool.query(
+    "SELECT id, clip_id, provider_job_id, started_at FROM jobs WHERE status = 'running' AND provider_job_id IS NOT NULL AND kind = 'media_generation'"
+  );
+  for (const job of result.rows) {
+    await pollJob(job);
+  }
+  return result.rows.length;
+}
+
+// Submits up to maxJobs newly queued jobs, then polls every job already in flight, regardless of
+// maxJobs -- an in-progress generation must never go unchecked just because new work exists.
+export async function processBatch(maxJobs) {
+  const submitted = await submitQueuedJobs(maxJobs);
+  const polled = await pollRunningJobs();
+  return { submitted, polled };
 }

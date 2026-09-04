@@ -8,7 +8,7 @@
     "pg": "^8.23.0"
   },
   "scripts": {
-    "start": "node src/index.js",
-    "run-once": "node src/run-once.js"
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "run-once": "node --env-file-if-exists=.env src/run-once.js"
   }
 }
