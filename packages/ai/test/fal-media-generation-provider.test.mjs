@@ -75,6 +75,23 @@ test("requestGeneration snaps duration to the nearest supported value", async ()
   }
 });
 
+test("requestGeneration encodes duration and forces audio/resolution for Veo 3.1", async () => {
+  const { calls, restore } = stubFetch([{ body: { request_id: "abc123" } }]);
+  try {
+    const provider = new FalMediaGenerationProvider({ apiKey: "test-key", modelId: "fal-ai/veo3.1" });
+    await provider.requestGeneration({ clipId: "clip-1", prompt: basePrompt, durationSeconds: 8, aspectRatio: "16:9" });
+    const body = JSON.parse(calls[0].options.body);
+    // Veo 3.1 takes duration as a "8s"-style string (per its OpenAPI schema), unlike LTX's plain
+    // number -- and defaults generate_audio to true server-side, so we always send it explicitly.
+    assert.equal(body.duration, "8s");
+    assert.equal(body.resolution, "1080p");
+    assert.equal(body.generate_audio, true);
+    assert.ok(calls[0].url.startsWith("https://queue.fal.run/fal-ai/veo3.1"));
+  } finally {
+    restore();
+  }
+});
+
 test("requestGeneration falls back to 16:9 for an unsupported aspect ratio", async () => {
   const { calls, restore } = stubFetch([{ body: { request_id: "abc123" } }]);
   try {
