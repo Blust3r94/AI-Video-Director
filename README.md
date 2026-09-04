@@ -27,7 +27,7 @@ Open `http://localhost:3000`.
 apps/web                 Next.js product interface and API boundary
 packages/domain          Provider-independent business model and contracts
 packages/database        Future Prisma schema/migrations home
-packages/ai              Future LLM orchestration home
+packages/ai              DirectorPlanner implementations (mock now, LLM-backed later)
 packages/worker          Future asynchronous jobs home
 docs                     Product decisions, roadmap and domain model
 ```

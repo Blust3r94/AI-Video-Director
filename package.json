@@ -12,8 +12,8 @@
     "dev": "npm run dev --workspace=@avid/web",
     "build": "npm run build --workspace=@avid/web",
     "lint": "npm run lint --workspace=@avid/web",
-    "typecheck": "npm run typecheck --workspace=@avid/web",
-    "test": "npm run test --workspace=@avid/domain",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
     "db:check": "npm run schema:check --workspace=@avid/database",
     "db:migrate": "npm run migrate --workspace=@avid/database"
   },
