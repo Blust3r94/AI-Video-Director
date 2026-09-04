@@ -2,13 +2,42 @@ import type { MediaGenerationCheckResult, MediaGenerationProvider, MediaGenerati
 
 const QUEUE_BASE = "https://queue.fal.run";
 const DEFAULT_MODEL_ID = "fal-ai/ltx-2.3/text-to-video";
-// This model's own enum; other fal.ai models accept different values, so a different
-// FAL_MODEL_ID may need this list (and the aspect ratio one below) adjusted to match.
-const SUPPORTED_DURATIONS = [6, 8, 10];
 const SUPPORTED_ASPECT_RATIOS = new Set(["16:9", "9:16"]);
 
-function nearestSupportedDuration(durationSeconds: number): number {
-  return SUPPORTED_DURATIONS.reduce((closest, candidate) =>
+// Each fal.ai model has its own input schema (verified against fal.ai's own OpenAPI schema for
+// each model, not guessed) -- duration in particular varies in both allowed values and encoding
+// (a plain number of seconds vs. a "8s"-style string). Add an entry here for any new FAL_MODEL_ID.
+interface ModelConfig {
+  supportedDurations: number[];
+  extraParams: (durationSeconds: number) => Record<string, unknown>;
+}
+
+const MODEL_CONFIGS: Record<string, ModelConfig> = {
+  "fal-ai/ltx-2.3/text-to-video": {
+    supportedDurations: [6, 8, 10],
+    extraParams: (durationSeconds) => ({ duration: durationSeconds }),
+  },
+  // Google Veo 3.1: https://fal.ai/models/fal-ai/veo3.1 -- 1080p and audio are both explicit
+  // choices here (audio defaults to true server-side, which doubles the price, so we always
+  // send it rather than rely on fal.ai's default). $0.40/sec at 1080p with audio.
+  "fal-ai/veo3.1": {
+    supportedDurations: [4, 6, 8],
+    extraParams: (durationSeconds) => ({ duration: `${durationSeconds}s`, resolution: "1080p", generate_audio: true }),
+  },
+  // Same model, same input schema, optimized for speed/cost: $0.15/sec at 1080p with audio --
+  // https://fal.ai/models/fal-ai/veo3.1/fast
+  "fal-ai/veo3.1/fast": {
+    supportedDurations: [4, 6, 8],
+    extraParams: (durationSeconds) => ({ duration: `${durationSeconds}s`, resolution: "1080p", generate_audio: true }),
+  },
+};
+
+function configFor(modelId: string): ModelConfig {
+  return MODEL_CONFIGS[modelId] ?? MODEL_CONFIGS[DEFAULT_MODEL_ID];
+}
+
+function nearestSupportedDuration(durationSeconds: number, supportedDurations: number[]): number {
+  return supportedDurations.reduce((closest, candidate) =>
     Math.abs(candidate - durationSeconds) < Math.abs(closest - durationSeconds) ? candidate : closest
   );
 }
@@ -68,13 +97,15 @@ export class FalMediaGenerationProvider implements MediaGenerationProvider {
   }
 
   async requestGeneration({ prompt, durationSeconds, aspectRatio }: MediaGenerationRequest): Promise<{ providerJobId: string }> {
+    const config = configFor(this.#modelId);
+    const snappedDuration = nearestSupportedDuration(durationSeconds, config.supportedDurations);
     const response = await fetch(`${QUEUE_BASE}/${this.#modelId}`, {
       method: "POST",
       headers: { Authorization: `Key ${this.#apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt: buildPromptText(prompt),
-        duration: nearestSupportedDuration(durationSeconds),
         aspect_ratio: SUPPORTED_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
+        ...config.extraParams(snappedDuration),
       }),
     });
     if (!response.ok) throw new Error(`fal.ai submit failed (${response.status}): ${await response.text()}`);

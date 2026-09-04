@@ -21,6 +21,13 @@ returning `"processing"`) because real generation is asynchronous and can take m
   check. Used automatically whenever `FAL_KEY` isn't set.
 - `FalMediaGenerationProvider` -- calls [fal.ai's queue API](https://fal.ai/docs/model-endpoints/queue).
   Needs `FAL_KEY` (a fal.ai API key); `FAL_MODEL_ID` optionally overrides the default model
-  (`fal-ai/ltx-2.3/text-to-video`). Different models accept different `duration`/`aspect_ratio`
-  enums -- swapping `FAL_MODEL_ID` may need `SUPPORTED_DURATIONS`/`SUPPORTED_ASPECT_RATIOS` in
-  `fal-media-generation-provider.ts` adjusted to match.
+  (`fal-ai/ltx-2.3/text-to-video`, cheap/fast). Each model has its own input schema (duration
+  encoding, resolution, audio, ...), verified against fal.ai's own OpenAPI schema per model rather
+  than assumed -- see `MODEL_CONFIGS` in `fal-media-generation-provider.ts`. Swapping `FAL_MODEL_ID`
+  to a model not already in that map needs a new entry there.
+  - `fal-ai/veo3.1` -- Google's cinema-grade model, 1080p with native audio forced on (fal.ai
+    defaults audio to on server-side regardless, so we always send it explicitly rather than
+    silently pay for it without meaning to). Real cost: $0.40/sec at 1080p with audio -- far more
+    than LTX, confirm before generating many clips.
+  - `fal-ai/veo3.1/fast` -- same model and input schema, optimized for speed/cost: $0.15/sec at
+    1080p with audio. Meaningfully cheaper than standard Veo 3.1 for close to the same quality.
