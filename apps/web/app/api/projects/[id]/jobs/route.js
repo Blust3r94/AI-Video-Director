@@ -11,7 +11,7 @@ export async function GET(request, { params }) {
   const client = await db.connect();
   try {
     const result = await client.query(
-      `SELECT jobs.id, jobs.kind, jobs.status, jobs.created_at,
+      `SELECT jobs.id, jobs.kind, jobs.status, jobs.created_at, jobs.output, jobs.error_message,
               scenes.title AS scene_title, clips.narrative_purpose, clips.camera_shot, clips.camera_movement
        FROM jobs
        JOIN clips ON clips.id = jobs.clip_id
@@ -30,6 +30,8 @@ export async function GET(request, { params }) {
       narrativePurpose: row.narrative_purpose,
       cameraShot: row.camera_shot,
       cameraMovement: row.camera_movement,
+      outputUrl: row.output?.outputUrl ?? null,
+      errorMessage: row.error_message,
     }));
     return NextResponse.json({ jobs });
   } catch (error) {

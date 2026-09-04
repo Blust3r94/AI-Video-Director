@@ -196,6 +196,22 @@ export interface DirectorPlanner {
   createPlan(input: { projectId: string; brief: CreativeBrief }): Promise<ProductionPlan>;
 }
 
+export interface MediaGenerationRequest {
+  clipId: string;
+  prompt: VideoGenerationPrompt;
+  durationSeconds: number;
+  aspectRatio: "16:9" | "9:16" | "1:1" | "custom";
+}
+
+export type MediaGenerationCheckResult =
+  | { status: "processing" }
+  | { status: "succeeded"; outputUrl: string }
+  | { status: "failed"; errorMessage: string };
+
+// Real generation is asynchronous and can take minutes, so the port is submit-then-poll rather
+// than request-and-wait: requestGeneration hands work off and returns immediately, and callers
+// call checkGeneration again later (possibly many times) until it stops returning "processing".
 export interface MediaGenerationProvider {
-  requestGeneration(input: { clipId: string; prompt: VideoGenerationPrompt }): Promise<{ providerJobId: string }>;
+  requestGeneration(input: MediaGenerationRequest): Promise<{ providerJobId: string }>;
+  checkGeneration(input: { providerJobId: string }): Promise<MediaGenerationCheckResult>;
 }

@@ -1,16 +1,13 @@
-import { pool, claimNextJob, processJob } from "./process-jobs.js";
+import { pool, processBatch } from "./process-jobs.js";
 
 const POLL_INTERVAL_MS = 3000;
+const MAX_JOBS_PER_TICK = 5;
 
 async function loop() {
   console.log(`[worker] started, polling every ${POLL_INTERVAL_MS}ms`);
   for (;;) {
-    const job = await claimNextJob();
-    if (job) {
-      await processJob(job);
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
+    await processBatch(MAX_JOBS_PER_TICK);
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
 

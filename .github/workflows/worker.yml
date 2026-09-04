@@ -21,3 +21,6 @@ jobs:
       - run: npm run worker:once
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Falls back to the mock provider automatically when this secret isn't set yet.
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          FAL_MODEL_ID: ${{ vars.FAL_MODEL_ID }}
