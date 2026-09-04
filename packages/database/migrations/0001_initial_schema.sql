@@ -11,6 +11,8 @@ CREATE TABLE users (
   id UUID PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   display_name TEXT,
+  -- scrypt output encoded as "saltHex:hashHex"; see apps/web/lib/password.js.
+  password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -22,6 +24,17 @@ CREATE TABLE workspaces (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- token_hash (sha256 of the bearer token in the session cookie) so a database read alone
+-- doesn't hand over a valid session, mirroring how passwords are never stored in the clear.
+CREATE TABLE sessions (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX sessions_token_hash_idx ON sessions (token_hash);
 
 CREATE TABLE memberships (
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
